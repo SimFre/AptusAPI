@@ -14,6 +14,7 @@ export default class {
 
     async initialize() {
         const params = {
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
             headless: this.headless,
             defaultViewport: {
                 width: 1024,
@@ -23,7 +24,7 @@ export default class {
         if (this.chromePath)
             params.executablePath = this.chromePath;
 
-        this.browser = await puppeteer.launch();
+        this.browser = await puppeteer.launch(params);
         this.page = await this.browser.newPage();
     }
 
