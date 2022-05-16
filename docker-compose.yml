@@ -1,0 +1,27 @@
+version: "3.4"
+services:
+  aptusapi:
+    build:
+      context: "."
+      network: br
+    container_name: aptusapi
+    domainname: example.tld
+    environment:
+      - PORT=3001
+      - APTUS_USERNAME=insert_username_here
+      - APTUS_PASSWORD=insert_password_here
+      - APTUS_BASEURL=https://aptusurl.example.tld
+    expose:
+      - 3001/tcp
+    hostname: aptusapi
+    image: simfre/aptusapi
+    networks:
+      lan:
+        ipv4_address: 10.0.0.5
+        ipv6_address: 2001:db8::5
+        aliases:
+          - aptusapi
+    restart: unless-stopped
+networks:
+  lan:
+    external: true

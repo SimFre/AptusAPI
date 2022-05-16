@@ -37,6 +37,11 @@ app.get("/open/:doorId", async (req, res) => {
 });
 
 app.listen(listenport, async () => {
-    console.log(`App started on ${listenport}`)
+    console.log(`
+        App started on ${listenport}
+        URL: ${baseurl}
+        UN:  ${username}
+        PW:  ${password}
+    `);
     await aptus.initialize();
 });
