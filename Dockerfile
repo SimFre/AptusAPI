@@ -4,7 +4,6 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 RUN apk add --no-cache ca-certificates git chromium nss freetype harfbuzz ttf-freefont xvfb xkbcomp \
     && git clone https://github.com/SimFre/AptusAPI.git . \
-    && git checkout dev \
     && npm ci --only-production \
     && addgroup -S pptruser \
     && adduser -S -G pptruser -h /app pptruser \
