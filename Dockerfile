@@ -8,9 +8,10 @@ RUN apk add --no-cache ca-certificates git chromium nss freetype harfbuzz ttf-fr
     && addgroup -S pptruser \
     && adduser -S -G pptruser -h /app pptruser \
     && mkdir -p /app/Downloads /app \
-    && chown -R pptruser:pptruser /app
+    && chown -R pptruser:pptruser /app \
+    && chmod +x /app/init.sh
 COPY . .
 USER pptruser
 EXPOSE 3001/tcp
 ENV DISPLAY :99
-CMD Xvfb :99 -screen 0 1024x768x16 & node ./apiserver.js
+CMD /app/init.sh
