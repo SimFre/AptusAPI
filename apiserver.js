@@ -1,4 +1,5 @@
 
+import morgan from "morgan";
 import express from "express";
 import aptuslib from "./aptuslib.js";
 
@@ -13,6 +14,7 @@ aptus.chromePath = chromePath;
 aptus.headless = false;
 
 const app = express();
+app.use(morgan('combined'));
 app.get("/list", async (req, res) => {
     const auth = await aptus.authenticate();
     if (auth.status === true) {
