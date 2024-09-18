@@ -1,5 +1,9 @@
 #!/bin/sh
-ls -alh /app
-which Xvfb
-which node
-Xvfb :99 -screen 0 1024x768x16 & node ./apiserver.js
+
+# If run manually, fill these in.
+# Otherwise, set them in Docker.
+# export PORT=3001
+# export APTUS_USERNAME=""
+# export APTUS_PASSWORD=""
+# export APTUS_BASEURL=""
+node ./apiserver.js

@@ -43,3 +43,28 @@ networks:
     external: true
 ```
 Execute this with `docker-compose up --build` after putting the `Dockerfile` into the same folder as `docker-compose.yml`.
+
+---
+
+## Credits
+AptusAPI, Made by Simon Fredriksson
+
+Node.js
+https://github.com/nodejs/
+
+express: Minimalist web framework for Node.js.
+https://github.com/expressjs/express
+
+morgan: HTTP request logger for Node.js
+https://github.com/expressjs/morgan
+
+Fast HTML Parser
+https://github.com/taoqf/node-html-parser
+
+
+## Disclaimer
+This project is not affiliated with or endorsed by Assa Abloy in
+any way, shape or form. It's an experimental solution to remotely
+open gates that are already within the user's control. No warranty
+of its function is given. Use at your own risk. Don't put it live
+where everyone can reach it.

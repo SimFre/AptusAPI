@@ -1,120 +1,173 @@
-
-import puppeteer from "puppeteer";
+import HTMLParser from "node-html-parser";
 
 export default class {
     constructor(baseurl, username, password) {
-        this.baseurl = baseurl;
+        this.baseurl = baseurl + "/AptusPortalStyra";
         this.username = username;
         this.password = password;
-        this.browser = null;
-        this.page = null;
-        this.chromePath;
-        this.headless = true;
+        this.debug = false;
+        this.session = "";
+        this.authtoken = "";
+        this.cookies = [];
+        this.doors = [];
     }
 
-    async initialize() {
-        const params = {
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-            headless: this.headless,
-            defaultViewport: {
-                width: 1024,
-                height: 768,
-            }
-        };
-        if (this.chromePath)
-            params.executablePath = this.chromePath;
-
-        this.browser = await puppeteer.launch(params);
-        this.page = await this.browser.newPage();
-    }
-
-    async authenticate() {
-        // Open the page
-        await this.page.goto(this.baseurl + "/AptusPortalStyra/Account/Login");
-        await this.page.waitForSelector('button[aria-label="English"]');
-        await this.page.click('button[aria-label="English"]');
-        await this.page.waitForSelector('#UserName');
-
-        // Fill in credentials
-        await this.page.type("#UserName", this.username);
-        await this.page.type("#Password", this.password);
-
-        // Select mobile version
-        const labels = await this.page.$$('label');
-        // console.log("Labels:", labels);
-        labels.forEach(async (o, i) => {
-            const labelProp = await o.getProperty('innerText');
-            const labelText = labelProp._remoteObject?.value?.trim();
-            if (labelText === 'Mobile') {
-                o.click()
-            }
-        });
-
-        // Login
-        await this.page.waitForTimeout(100);
-        await this.page.click("#btnLogin");
-        await this.page.waitForSelector("body");
-        if (await this.page.$('#popup_message') !== null) {
-            const msgObj = await this.page.$('#popup_message');
-            const msgProp = await msgObj.getProperty('innerText');
-            const msgValue = await msgProp.jsonValue();
-            return { "status": false, "message": msgValue };
-        }
-        else if (await this.page.$('#ShowMenuButton') !== null) {
-            return { "status": true, "message": "success" };
-        }
-        else {
-            return { "status": false, "message": "unknown" };
-        }
-    }
-
-    async unlockDoor(doorId) {
-        const response = await this.page.goto(this.baseurl + "/AptusPortalStyra/Lock/UnlockEntryDoor/" + doorId);
-        try {
-            const jsonData = await response.json();
-            return jsonData;
-        }
-        catch (e) {
-            const dStr = new Date().toISOString().replace(/[T:\-\+\.]/g, "");
-            await this.page.screenshot({ path: 'unlock_' + dStr + '_' + doorId + '.png' });
-            console.log(e);
+    getCookie(headers, name) {
+        const jar = headers.getSetCookie();
+        for (let cookie of jar) {
+            const parts = cookie.split(/[=;]/);
+            if (name == parts[0])
+                return {
+                    name: parts[0],
+                    value: parts[1],
+                };
         }
         return false;
     }
 
+    encodePassword(password, salt) {
+        let encode = "";
+        for (let i = 0; i < password.length; ++i) {
+            encode += String.fromCharCode(salt ^ password.charCodeAt(i));
+        }
+        return encode;
+    }
+
+    async initialize() {
+        // Establish a session
+        if (this.debug) console.debug("Initializing");
+        const req = await fetch(this.baseurl + "/Account/SetCustomerLanguage?lang=en-GB", {
+            credentials: "include",
+            redirect: "manual",
+        });
+        const session = this.getCookie(req.headers, "ASP.NET_SessionId");
+        this.session = session?.value ?? "";
+        if (this.debug) console.debug("SessionID: ", this.session);
+        if (this.debug) console.debug("Body Resp: ", await req.text());
+        return this.session;
+    }
+
+    async authenticate() {
+        // Retrieve the start page
+        if (this.debug) console.debug("Authenticating");
+        const req1 = await fetch(this.baseurl + "/Account/Login", {
+            credentials: "include",
+            redirect: "manual",
+            headers: {
+                // FIXME use cookie jar
+                Cookie: "ASP.NET_SessionId=" + this.session,
+            },
+        });
+
+        // Parse the body into a queryable object
+        const body = await req1.text();
+        const html = HTMLParser.parse(body);
+        //if (this.debug) console.debug("Response", body);
+
+        // Get the request verification token
+        const rvtObject = html.querySelector("input[name=__RequestVerificationToken]");
+        const rvtString = rvtObject._attrs.value;
+
+        // Get the password salt
+        const saltObject = html.querySelector("#PasswordSalt");
+        const saltString = saltObject._attrs.value;
+
+        // Prepare authentication request
+        const pwenc = this.encodePassword(this.password, saltString);
+        const authform = new URLSearchParams({
+            DeviceType: "PC",
+            DesktopSelected: "true",
+            __RequestVerificationToken: rvtString,
+            UserName: this.username,
+            Password: this.password,
+            PwEnc: pwenc,
+            PasswordSalt: saltString,
+        });
+        if (this.debug) console.debug("Auth Form:", authform);
+
+        // Send the login request
+        // FIXME test if the URL can redirect to AptusPortalStyra/Lock/UnlockEntryDoor/doorId
+        const req2 = await fetch(
+            this.baseurl + "/Account/Login?ReturnUrl=/AptusPortalStyra/Lock",
+            {
+                method: "post",
+                credentials: "include",
+                redirect: "manual",
+                headers: {
+                    // FIXME use cookie jar
+                    Cookie: "ASP.NET_SessionId=" + this.session,
+                },
+                body: authform,
+            }
+        );
+
+        // FIXME do I need to await for the text to get headers?
+        //const r2body = await req2.text();
+        const authtoken = this.getCookie(req2.headers, ".ASPXAUTH");
+        this.authtoken = authtoken?.value ?? "";
+
+        if (this.debug) console.debug("Auth Token:", this.authtoken);
+        return this.authtoken;
+    }
+
+    async unlockDoor(doorId) {
+        if (this.debug) console.debug("Unlock", doorId);
+        const req = await fetch(this.baseurl + "/Lock/UnlockEntryDoor/" + doorId, {
+            method: "get",
+            credentials: "include",
+            redirect: "manual",
+            headers: {
+                // FIXME use cookie jar
+                Cookie: "ASP.NET_SessionId=" + this.session + ";.ASPXAUTH=" + this.authtoken,
+            },
+        });
+        const respCode = req.status;
+        const respText = req.statusText;
+        let respBody = await req.text();
+        let respJson = -1;
+        try {
+            respJson = JSON.parse(respBody);
+            respBody = respJson;
+        } catch (ex) {
+            if (this.debug) console.error(ex);
+            respBody = { StatusText: "Invalid door", HeaderStatusText: "Error" };
+        }
+        if (this.debug) console.debug("Unlock", respCode, respText, respBody);
+        return respBody;
+    }
+
     async listDoors() {
-        const response = await this.page.goto(this.baseurl + "/AptusPortalStyra/Lock");
-        await this.page.waitForSelector('.lockCard');
+        if (this.debug) console.debug("ListDoors");
+        this.doors = [];
+        const req = await fetch(this.baseurl + "/Lock", {
+            method: "get",
+            credentials: "include",
+            redirect: "manual",
+            headers: {
+                // FIXME use cookie jar
+                Cookie: "ASP.NET_SessionId=" + this.session + ";.ASPXAUTH=" + this.authtoken,
+            },
+        });
 
-        const lockCards = await this.page.$$('.lockCard');
-        const doors = [];
+        const body = await req.text();
+        const html = HTMLParser.parse(body);
 
-        for (const card of lockCards) {
-            try {
-                const nameObj = await card.$('div > span');
-                const nameProp = await nameObj.getProperty('innerText');
-                const nameValue = await nameProp.jsonValue();
-
-                const idObj = await card.$('.lockCardButton');
-                const idAttr = await this.page.evaluate(el => el.getAttribute("id"), idObj);
-                const idSplit = idAttr.split("_");
-                const idValue = idSplit[1];
-
-                doors.push({
-                    "name": nameValue,
-                    "id": idValue
-                });
-            }
-            catch (e) {
-                const dStr = new Date().toISOString().replace(/[T:\-\+\.]/g, "");
-                await this.page.screenshot({ path: 'list_' + dStr + '_' + doorId + '.png' });
-                console.log("Could not get value:", e.message);
-            }
-        };
-        return doors;
+        // .lockCard @id
+        // split by _ to get door id (entranceDoorButton_3438)
+        // .lockCard span to get description
+        const entries = html.querySelectorAll(".lockCard");
+        for (let entry of entries) {
+            const s = entry.id.split("_");
+            const h = HTMLParser.parse(entry.toString());
+            const span = h.querySelector("span");
+            const desc = span.childNodes[0]._rawText;
+            console.log(entry.id, desc);
+            this.doors.push({ name: desc, id: s[1] });
+        }
+        return this.doors;
     }
 
     close() {
-        this.browser?.close();
+        return;
     }
 }
